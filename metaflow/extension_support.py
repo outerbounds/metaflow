@@ -9,7 +9,7 @@ import types
 
 from collections import defaultdict, namedtuple
 
-from importlib.abc import MetaPathFinder, Loader
+#from importlib.abc import MetaPathFinder, Loader
 from itertools import chain
 
 #
@@ -225,6 +225,133 @@ def alias_submodules(module, tl_package, extension_point, extra_indent=False):
 
 def lazy_load_aliases(aliases):
     if aliases:
+
+        class _LazyFinder(MetaPathFinder):
+            # This _LazyFinder implements the Importer Protocol defined in PEP 302
+
+            def __init__(self, handled):
+                # Dictionary:
+                # Key: name of the module to handle
+                # Value:
+                #   - A string: a pathspec to the module to load
+                #   - A module: the module to load
+                self._handled = handled if handled else {}
+
+                # This is used to revert back to regular loading when trying to load
+                # the over-ridden module
+                self._temp_excluded_prefix = set()
+
+            def find_spec(self, fullname, path, target=None):
+                # If we are trying to load a shadowed module (ending in ._orig), we don't
+                # say we handle it
+                if any([fullname.startswith(e) for e in self._temp_excluded_prefix]):
+                    return None
+
+                # If this is something we directly handle, return our loader
+                if fullname in self._handled:
+                    return importlib.util.spec_from_loader(
+                        fullname, _AliasLoader(fullname, self._handled[fullname])
+                    )
+
+                # For the first pass when we try to load a shadowed module, we send it back
+                # without the ._orig and that will find the original spec of the module
+                # Note that we handle mymodule._orig.orig_submodule as well as mymodule._orig.
+                # Basically, the original module and any of the original submodules are
+                # available under _orig.
+                name_parts = fullname.split(".")
+                try:
+                    orig_idx = name_parts.index("_orig")
+                except ValueError:
+                    orig_idx = -1
+                if orig_idx > -1 and ".".join(name_parts[:orig_idx]) in self._handled:
+                    orig_name = ".".join(name_parts[:orig_idx] + name_parts[orig_idx + 1 :])
+                    _ext_debug("Looking for original module '%s'" % orig_name)
+                    prefix = ".".join(name_parts[:orig_idx])
+                    self._temp_excluded_prefix.add(prefix)
+                    # We also have to remove the module temporarily while we look for the
+                    # new spec since otherwise it returns the spec of that loaded module.
+                    # module is also restored *after* we call `create_module` in the loader
+                    # otherwise it just returns None
+                    loaded_module = sys.modules.get(orig_name)
+                    if loaded_module:
+                        del sys.modules[orig_name]
+
+                    # This finds the spec that would have existed had we not added all our
+                    # _LazyFinders
+                    spec = importlib.util.find_spec(orig_name)
+
+                    self._temp_excluded_prefix.remove(prefix)
+
+                    if not spec:
+                        return None
+
+                    _ext_debug("Found original spec %s" % spec)
+
+                    # Change the spec
+
+
+                    class _OrigLoader(Loader):
+                        def __init__(self, fullname, orig_loader, previously_loaded_module=None):
+                            self._fullname = fullname
+                            self._orig_loader = orig_loader
+                            self._previously_loaded_module = previously_loaded_module
+
+                        def create_module(self, spec):
+                            _ext_debug(
+                                "Loading original module '%s' (will be loaded at '%s')"
+                                % (spec.name, self._fullname)
+                            )
+                            self._orig_name = spec.name
+                            return self._orig_loader.create_module(spec)
+
+                        def exec_module(self, module):
+                            try:
+                                # Perform all actions of the original loader
+                                self._orig_loader.exec_module(module)
+                            except BaseException:
+                                raise  # We re-raise it always; the finally clause will still restore things
+                            else:
+                                # It loaded, we move and rename appropriately
+                                module.__spec__.name = self._fullname
+                                module.__orig_name__ = module.__name__
+                                module.__name__ = self._fullname
+                                sys.modules[self._fullname] = module
+                                del sys.modules[self._orig_name]
+
+                            finally:
+                                # At this point, the original module is loaded with the original name. We
+                                # want to replace it with previously_loaded_module if it exists and, in both
+                                # cases, change the name to fullname (which has _orig in it)
+                                if self._previously_loaded_module:
+                                    sys.modules[self._orig_name] = self._previously_loaded_module
+
+
+                    spec.loader = _OrigLoader(fullname, spec.loader, loaded_module)
+
+                    return spec
+
+                if len(name_parts) > 1:
+                    # This checks for submodules of things we handle. We check for the most
+                    # specific submodule match and use that
+                    chop_idx = 1
+                    while chop_idx < len(name_parts):
+                        parent_name = ".".join(name_parts[:-chop_idx])
+                        if parent_name in self._handled:
+                            orig = self._handled[parent_name]
+                            if isinstance(orig, types.ModuleType):
+                                orig_name = ".".join(
+                                    [orig.__orig_name__] + name_parts[-chop_idx:]
+                                )
+                            else:
+                                orig_name = ".".join([orig] + name_parts[-chop_idx:])
+                            return importlib.util.spec_from_loader(
+                                fullname, _AliasLoader(fullname, orig_name)
+                            )
+                        chop_idx += 1
+                return None
+
+
+
         sys.meta_path = [_LazyFinder(aliases)] + sys.meta_path
 
 
@@ -892,154 +1019,8 @@ def _filter_files_all():
         _filter_files_package(p)
 
 
-class _AliasLoader(Loader):
-    def __init__(self, alias, orig):
-        self._alias = alias
-        self._orig = orig
-
-    def create_module(self, spec):
-        _ext_debug(
-            "Loading aliased module '%s' at '%s' " % (str(self._orig), spec.name)
-        )
-        if isinstance(self._orig, str):
-            try:
-                return importlib.import_module(self._orig)
-            except ImportError:
-                raise ImportError(
-                    "No module found '%s' (aliasing '%s')" % (spec.name, self._orig)
-                )
-        elif isinstance(self._orig, types.ModuleType):
-            # We are aliasing a module so we just return that one
-            return self._orig
-        else:
-            return super().create_module(spec)
-
-    def exec_module(self, module):
-        # Override the name to make it a bit nicer. We keep the old name so that
-        # we can refer to it when we load submodules
-        if not hasattr(module, "__orig_name__"):
-            module.__orig_name__ = module.__name__
-            module.__name__ = self._alias
 
 
-class _OrigLoader(Loader):
-    def __init__(self, fullname, orig_loader, previously_loaded_module=None):
-        self._fullname = fullname
-        self._orig_loader = orig_loader
-        self._previously_loaded_module = previously_loaded_module
-
-    def create_module(self, spec):
-        _ext_debug(
-            "Loading original module '%s' (will be loaded at '%s')"
-            % (spec.name, self._fullname)
-        )
-        self._orig_name = spec.name
-        return self._orig_loader.create_module(spec)
-
-    def exec_module(self, module):
-        try:
-            # Perform all actions of the original loader
-            self._orig_loader.exec_module(module)
-        except BaseException:
-            raise  # We re-raise it always; the finally clause will still restore things
-        else:
-            # It loaded, we move and rename appropriately
-            module.__spec__.name = self._fullname
-            module.__orig_name__ = module.__name__
-            module.__name__ = self._fullname
-            sys.modules[self._fullname] = module
-            del sys.modules[self._orig_name]
-
-        finally:
-            # At this point, the original module is loaded with the original name. We
-            # want to replace it with previously_loaded_module if it exists and, in both
-            # cases, change the name to fullname (which has _orig in it)
-            if self._previously_loaded_module:
-                sys.modules[self._orig_name] = self._previously_loaded_module
 
 
-class _LazyFinder(MetaPathFinder):
-    # This _LazyFinder implements the Importer Protocol defined in PEP 302
 
-    def __init__(self, handled):
-        # Dictionary:
-        # Key: name of the module to handle
-        # Value:
-        #   - A string: a pathspec to the module to load
-        #   - A module: the module to load
-        self._handled = handled if handled else {}
-
-        # This is used to revert back to regular loading when trying to load
-        # the over-ridden module
-        self._temp_excluded_prefix = set()
-
-    def find_spec(self, fullname, path, target=None):
-        # If we are trying to load a shadowed module (ending in ._orig), we don't
-        # say we handle it
-        if any([fullname.startswith(e) for e in self._temp_excluded_prefix]):
-            return None
-
-        # If this is something we directly handle, return our loader
-        if fullname in self._handled:
-            return importlib.util.spec_from_loader(
-                fullname, _AliasLoader(fullname, self._handled[fullname])
-            )
-
-        # For the first pass when we try to load a shadowed module, we send it back
-        # without the ._orig and that will find the original spec of the module
-        # Note that we handle mymodule._orig.orig_submodule as well as mymodule._orig.
-        # Basically, the original module and any of the original submodules are
-        # available under _orig.
-        name_parts = fullname.split(".")
-        try:
-            orig_idx = name_parts.index("_orig")
-        except ValueError:
-            orig_idx = -1
-        if orig_idx > -1 and ".".join(name_parts[:orig_idx]) in self._handled:
-            orig_name = ".".join(name_parts[:orig_idx] + name_parts[orig_idx + 1 :])
-            _ext_debug("Looking for original module '%s'" % orig_name)
-            prefix = ".".join(name_parts[:orig_idx])
-            self._temp_excluded_prefix.add(prefix)
-            # We also have to remove the module temporarily while we look for the
-            # new spec since otherwise it returns the spec of that loaded module.
-            # module is also restored *after* we call `create_module` in the loader
-            # otherwise it just returns None
-            loaded_module = sys.modules.get(orig_name)
-            if loaded_module:
-                del sys.modules[orig_name]
-
-            # This finds the spec that would have existed had we not added all our
-            # _LazyFinders
-            spec = importlib.util.find_spec(orig_name)
-
-            self._temp_excluded_prefix.remove(prefix)
-
-            if not spec:
-                return None
-
-            _ext_debug("Found original spec %s" % spec)
-
-            # Change the spec
-            spec.loader = _OrigLoader(fullname, spec.loader, loaded_module)
-
-            return spec
-
-        if len(name_parts) > 1:
-            # This checks for submodules of things we handle. We check for the most
-            # specific submodule match and use that
-            chop_idx = 1
-            while chop_idx < len(name_parts):
-                parent_name = ".".join(name_parts[:-chop_idx])
-                if parent_name in self._handled:
-                    orig = self._handled[parent_name]
-                    if isinstance(orig, types.ModuleType):
-                        orig_name = ".".join(
-                            [orig.__orig_name__] + name_parts[-chop_idx:]
-                        )
-                    else:
-                        orig_name = ".".join([orig] + name_parts[-chop_idx:])
-                    return importlib.util.spec_from_loader(
-                        fullname, _AliasLoader(fullname, orig_name)
-                    )
-                chop_idx += 1
-        return None
