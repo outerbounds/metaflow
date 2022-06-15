@@ -19,6 +19,9 @@ from metaflow.metaflow_config import (
     KUBERNETES_NODE_SELECTOR,
     KUBERNETES_SECRETS,
     S3_ENDPOINT_URL,
+    AZURE_STORAGE_ACCOUNT_URL,
+    DATASTORE_SYSROOT_AZURE,
+    DATASTORE_CARD_AZUREROOT,
 )
 from metaflow.mflog import BASH_SAVE_LOGS, bash_capture_logs, export_mflog_env_vars
 from metaflow.parameters import deploy_time_eval
@@ -601,7 +604,9 @@ class ArgoWorkflows(object):
                     task_id_expr,
                     mflog_expr,
                 ]
-                + self.environment.get_package_commands(self.code_package_url)
+                + self.environment.get_package_commands(
+                    self.code_package_url, datastore_type=self.flow_datastore.TYPE
+                )
             )
             step_cmds = self.environment.bootstrap_commands(node.name)
 
@@ -775,6 +780,18 @@ class ArgoWorkflows(object):
             # add METAFLOW_S3_ENDPOINT_URL
             if S3_ENDPOINT_URL is not None:
                 env["METAFLOW_S3_ENDPOINT_URL"] = S3_ENDPOINT_URL
+
+            # Azure stuff
+            # TODO Note "None" guard.  We should be doing that to everything. It makes no sense to
+            # set env vars to the value "None".
+            if AZURE_STORAGE_ACCOUNT_URL is not None:
+                env["METAFLOW_AZURE_STORAGE_ACCOUNT_URL"] = AZURE_STORAGE_ACCOUNT_URL
+
+            if DATASTORE_SYSROOT_AZURE is not None:
+                env["METAFLOW_DATASTORE_SYSROOT_AZURE"] = DATASTORE_SYSROOT_AZURE
+
+            if DATASTORE_CARD_AZUREROOT is not None:
+                env["METAFLOW_DATASTORE_CARD_AZUREROOT"] = DATASTORE_CARD_AZUREROOT
 
             metaflow_version = self.environment.get_environment_info()
             metaflow_version["flow_name"] = self.graph.name

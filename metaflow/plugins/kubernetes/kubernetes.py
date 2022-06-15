@@ -20,6 +20,9 @@ from metaflow.metaflow_config import (
     DEFAULT_AWS_CLIENT_PROVIDER,
     DEFAULT_METADATA,
     S3_ENDPOINT_URL,
+    AZURE_STORAGE_ACCOUNT_URL,
+    DATASTORE_SYSROOT_AZURE,
+    DATASTORE_CARD_AZUREROOT,
 )
 from metaflow.mflog import (
     BASH_SAVE_LOGS,
@@ -78,7 +81,9 @@ class Kubernetes(object):
             stdout_path=STDOUT_PATH,
             stderr_path=STDERR_PATH,
         )
-        init_cmds = self._environment.get_package_commands(code_package_url)
+        init_cmds = self._environment.get_package_commands(
+            code_package_url, datastore_type=self._datastore.TYPE
+        )
         init_expr = " && ".join(init_cmds)
         step_expr = bash_capture_logs(
             " && ".join(self._environment.bootstrap_commands(step_name) + step_cmds)
@@ -177,7 +182,7 @@ class Kubernetes(object):
             )
             .environment_variable("METAFLOW_DATASTORE_SYSROOT_S3", DATASTORE_SYSROOT_S3)
             .environment_variable("METAFLOW_DATATOOLS_S3ROOT", DATATOOLS_S3ROOT)
-            .environment_variable("METAFLOW_DEFAULT_DATASTORE", "s3")
+            .environment_variable("METAFLOW_DEFAULT_DATASTORE", self._datastore.TYPE)
             .environment_variable("METAFLOW_DEFAULT_METADATA", DEFAULT_METADATA)
             .environment_variable("METAFLOW_KUBERNETES_WORKLOAD", 1)
             .environment_variable("METAFLOW_RUNTIME_ENVIRONMENT", "kubernetes")
@@ -195,6 +200,18 @@ class Kubernetes(object):
         # add METAFLOW_S3_ENDPOINT_URL
         if S3_ENDPOINT_URL is not None:
             job.environment_variable("METAFLOW_S3_ENDPOINT_URL", S3_ENDPOINT_URL)
+        if AZURE_STORAGE_ACCOUNT_URL is not None:
+            job.environment_variable(
+                "METAFLOW_AZURE_STORAGE_ACCOUNT_URL", AZURE_STORAGE_ACCOUNT_URL
+            )
+        if DATASTORE_SYSROOT_AZURE is not None:
+            job.environment_variable(
+                "METAFLOW_DATASTORE_SYSROOT_AZURE", DATASTORE_SYSROOT_AZURE
+            )
+        if DATASTORE_CARD_AZUREROOT is not None:
+            job.environment_variable(
+                "METAFLOW_CARD_AZUREROOT", DATASTORE_CARD_AZUREROOT
+            )
 
         for name, value in env.items():
             job.environment_variable(name, value)
@@ -259,31 +276,50 @@ class Kubernetes(object):
                 time.sleep(update_delay(time.time() - start_time))
 
         prefix = b"[%s] " % util.to_bytes(self._job.id)
-        stdout_tail = S3Tail(stdout_location)
-        stderr_tail = S3Tail(stderr_location)
+
+        tailing_supported = False
+        if self._datastore.TYPE == "s3":
+            stdout_tail = S3Tail(stdout_location)
+            stderr_tail = S3Tail(stderr_location)
+            tailing_supported = True
+        elif self._datastore.TYPE == "azure":
+            from metaflow.plugins.azure.azure_tail import AzureTail
+
+            stdout_tail = AzureTail(stdout_location)
+            stderr_tail = AzureTail(stderr_location)
+            tailing_supported = True
+        else:
+            echo(
+                "Log tailing unsupported currently for datastore type %s"
+                % self._datastore.TYPE
+            )
 
         # 1) Loop until the job has started
         wait_for_launch(self._job)
 
-        # 2) Tail logs until the job has finished
-        tail_logs(
-            prefix=prefix,
-            stdout_tail=stdout_tail,
-            stderr_tail=stderr_tail,
-            echo=echo,
-            has_log_updates=lambda: self._job.is_running,
-        )
-
-        # 3) Fetch remaining logs
-        #
-        # It is possible that we exit the loop above before all logs have been
-        # shown.
-        #
-        # TODO : If we notice Kubernetes failing to upload logs to S3,
-        #        we can add a HEAD request here to ensure that the file
-        #        exists prior to calling S3Tail and note the user about
-        #        truncated logs if it doesn't.
-        # TODO : For hard crashes, we can fetch logs from the pod.
+        if tailing_supported:
+            # 2) Tail logs until the job has finished
+            tail_logs(
+                prefix=prefix,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
+                echo=echo,
+                has_log_updates=lambda: self._job.is_running,
+            )
+            # 3) Fetch remaining logs
+            #
+            # It is possible that we exit the loop above before all logs have been
+            # shown.
+            #
+            # TODO : If we notice Kubernetes failing to upload logs to S3,
+            #        we can add a HEAD request here to ensure that the file
+            #        exists prior to calling S3Tail and note the user about
+            #        truncated logs if it doesn't.
+            # TODO : For hard crashes, we can fetch logs from the pod.
+        else:
+            while self._job.is_running:
+                echo("Waiting for job to complete...")
+                time.sleep(10)
 
         if self._job.has_failed:
             exit_code, reason = self._job.reason
