@@ -17,4 +17,4 @@ run_tests() {
   cd test/core && PYTHONPATH=`pwd`/../../ python3 run_tests.py --inherit-env --num-parallel 8
 }
 
-install_deps && install_extensions && run_tests 
+install_deps && install_extensions && env && run_tests
