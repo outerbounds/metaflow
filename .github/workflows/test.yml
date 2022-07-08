@@ -36,4 +36,9 @@ jobs:
         python3 -m pip install tox numpy
 
     - name: Execute Python tests
+      env:
+        METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE: ${{ secrets.METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE }}
+        METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
+        METAFLOW_AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.METAFLOW_AZURE_STORAGE_ACCOUNT_URL }}
+
       run: tox
