@@ -2,11 +2,7 @@ name: Test
 on:
   push:
     branches:
-    - master
     - jackie-azure-storage
-  pull_request:
-    branches:
-    - master
   workflow_call:
   
 jobs:
@@ -23,8 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        ver: ['3.5', '3.6', '3.7', '3.8']
+        os: [ubuntu-latest]
+        ver: ['3.10']
 
     steps:
     - uses: actions/checkout@v2
