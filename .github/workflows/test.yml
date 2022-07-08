@@ -70,4 +70,4 @@ jobs:
         METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
         METAFLOW_AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.METAFLOW_AZURE_STORAGE_ACCOUNT_URL }}
 
-      run: tox
+      run: tox core
