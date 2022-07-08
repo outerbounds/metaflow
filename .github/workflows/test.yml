@@ -3,6 +3,7 @@ on:
   push:
     branches:
     - master
+    - jackie-azure-storage
   pull_request:
     branches:
     - master
