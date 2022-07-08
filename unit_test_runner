@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -o errexit -o nounset -o pipefail
+
+install_deps() {
+    python3 -m pip install .
+    python3 -m pip install azure-storage-blob azure-identity
+}
+
+run_unit_tests() {
+  cd test/unit && PYTHONPATH=`pwd`/../../ python3 test_azure_storage.py
+}
+
+install_deps && run_unit_tests
