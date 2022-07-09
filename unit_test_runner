@@ -4,11 +4,19 @@ set -o errexit -o nounset -o pipefail
 
 install_deps() {
     python3 -m pip install .
-    python3 -m pip install azure-storage-blob azure-identity
+    python3 -m pip install pytest
+    if [ "${METAFLOW_TEST_UNIT_INCLUDE_AZURE}" == "1" ]; then
+        python3 -m pip install azure-storage-blob azure-identity
+    fi
 }
 
 run_unit_tests() {
-  cd test/unit && PYTHONPATH=`pwd`/../../ python3 test_azure_storage.py
+    cd test/unit
+    if [ "${METAFLOW_TEST_UNIT_INCLUDE_AZURE}" == "1" ]; then
+        PYTHONPATH=`pwd`/../../ pytest azure
+    fi
+    PYTHONPATH=`pwd`/../../ pytest standard
+
 }
 
 install_deps && run_unit_tests

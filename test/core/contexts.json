@@ -2,7 +2,7 @@
     "contexts": [
         {
             "name": "python3-all-local",
-            "disabled": true,
+            "disabled": false,
             "env": {
                 "METAFLOW_USER": "tester",
                 "METAFLOW_RUN_BOOL_PARAM": "False",
@@ -32,7 +32,7 @@
         },
         {
             "name": "python3-all-local-azure-storage",
-            "disabled": false,
+            "disabled": true,
             "env": {
                 "METAFLOW_USER": "tester",
                 "METAFLOW_RUN_BOOL_PARAM": "False",

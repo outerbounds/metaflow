@@ -4,7 +4,9 @@ set -o errexit -o nounset -o pipefail
 
 install_deps() {
     python3 -m pip install .
-    python3 -m pip install azure-storage-blob azure-identity
+    if [ "${METAFLOW_TEST_CORE_INCLUDE_AZURE}" == "1" ]; then
+        python3 -m pip install azure-identity azure-storage-blob
+    fi
 }
 
 install_extensions() {
@@ -14,7 +16,13 @@ install_extensions() {
 }
 
 run_tests() {
-  cd test/core && PYTHONPATH=`pwd`/../../ python3 run_tests.py --inherit-env --num-parallel 8
+  cd test/core
+  if [ "${METAFLOW_TEST_CORE_INCLUDE_AZURE}" == "1" ]; then
+      # First, run the azure context
+      PYTHONPATH=`pwd`/../../ python3 run_tests.py --num-parallel 8 --contexts python3-all-local-azure-storage
+  fi
+  # Run default set of contexts
+  PYTHONPATH=`pwd`/../../ python3 run_tests.py --num-parallel 8
 }
 
-install_deps && install_extensions && env && run_tests
+install_deps && install_extensions && run_tests
