@@ -4,7 +4,7 @@ set -o errexit -o nounset -o pipefail
 
 install_deps() {
     python3 -m pip install .
-    if [ "${METAFLOW_TEST_CORE_INCLUDE_AZURE}" == "1" ]; then
+    if [ "${METAFLOW_TEST_CORE_INCLUDE_AZURE:-0}" == "1" ]; then
         python3 -m pip install azure-identity azure-storage-blob
     fi
 }
@@ -17,7 +17,7 @@ install_extensions() {
 
 run_tests() {
   cd test/core
-  if [ "${METAFLOW_TEST_CORE_INCLUDE_AZURE}" == "1" ]; then
+  if [ "${METAFLOW_TEST_CORE_INCLUDE_AZURE:-0}" == "1" ]; then
       # First, run the azure context
       PYTHONPATH=`pwd`/../../ python3 run_tests.py --num-parallel 8 --contexts python3-all-local-azure-storage
   fi
