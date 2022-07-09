@@ -40,7 +40,7 @@ jobs:
           METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
           METAFLOW_AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.METAFLOW_AZURE_STORAGE_ACCOUNT_URL }}
 
-        run: tox unit
+        run: tox -e unit
 
   Core:
     name: core / Python ${{ matrix.ver }} on ${{ matrix.os }}
@@ -70,4 +70,4 @@ jobs:
         METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
         METAFLOW_AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.METAFLOW_AZURE_STORAGE_ACCOUNT_URL }}
 
-      run: tox core
+      run: tox -e core
