@@ -41,8 +41,6 @@ jobs:
         run: |
           export METAFLOW_DATASTORE_SYSROOT_AZURE=$METAFLOW_DATASTORE_SYSROOT_AZURE/ob-ci/azure_unit_tests/$(date +%s)-$(openssl rand -hex 5)
           cd test/unit && PYTHONPATH=$(pwd)/../../ python3 test_azure_storage.py
-        # Unit test tries its best to clean up any blobs created...
-        # TODO add catch all clean up of everything in METAFLOW_DATASTORE_SYSROOT_AZURE
 
   core:
     name: Azure core tests / Python ${{ matrix.ver }} on ${{ matrix.os }}
@@ -76,7 +74,6 @@ jobs:
           sh install_packages.sh
           cd ../../
           cd test/core && PYTHONPATH=`pwd`/../../ python3 run_tests.py --num-parallel 8 --inherit-env --contexts python3-all-local-azure-storage
-        # TODO add catch all clean up of everything in METAFLOW_DATASTORE_SYSROOT_AZURE
 
   k8s-and-argo:
     name: Azure / Argo + k8s / Python ${{ matrix.ver }} on ${{ matrix.os }}
@@ -137,7 +134,6 @@ jobs:
           python3 metaflow-on-azure/scripts/forward_metaflow_ports.py --include-argo &
           echo "Waiting 10 seconds for port forwards to be ready"
           sleep 10
-        # TODO add catch all clean up of everything in METAFLOW_DATASTORE_SYSROOT_AZURE
 
       - name: Run a Flow on Kubernetes
         env:
@@ -149,7 +145,6 @@ jobs:
           METAFLOW_SERVICE_INTERNAL_URL: http://metadata-service.default:8080/
         run: |
           source $HOME/miniconda3/bin/activate
-          export METAFLOW_DATASTORE_SYSROOT_AZURE=$(cat .metaflow_datastore_sysroot_azure)
           export PYTHONPATH=$(pwd)
           kubectl create secret generic "$METAFLOW_KUBERNETES_SECRETS" --from-literal=METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE="${METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE}"
           python3 metaflow-on-azure/sample_flows/conda_noop_flow.py --environment=conda --datastore=azure --metadata=service run --with=kubernetes
@@ -166,13 +161,11 @@ jobs:
           METAFLOW_KUBERNETES_NAMESPACE: argo
         run: |
           source $HOME/miniconda3/bin/activate
-          export METAFLOW_DATASTORE_SYSROOT_AZURE=$(cat .metaflow_datastore_sysroot_azure)
           export PYTHONPATH=$(pwd)
           kubectl create secret generic "$METAFLOW_KUBERNETES_SECRETS" -n "${METAFLOW_KUBERNETES_NAMESPACE}" --from-literal=METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE="${METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE}"
           python3 metaflow-on-azure/sample_flows/conda_noop_flow.py --environment=conda --datastore=azure --metadata=service --with retry argo-workflows create
           python3 metaflow-on-azure/sample_flows/conda_noop_flow.py --environment=conda --datastore=azure --metadata=service argo-workflows trigger --run-id-file run_id_file
           argo wait --verbose -n argo "$(cat run_id_file | cut -f2- -d-)"
           kubectl delete secret "$METAFLOW_KUBERNETES_SECRETS" -n "${METAFLOW_KUBERNETES_NAMESPACE}"
-        # TODO add catch all clean up of everything in METAFLOW_DATASTORE_SYSROOT_AZURE
 
 
