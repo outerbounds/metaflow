@@ -1,6 +1,6 @@
 
 export METAFLOW_DATASTORE_SYSROOT_AZURE=test-azure-storage/hotdog-core/$(date +%s)
-export METAFLOW_AZURE_STORAGE_ACCOUNT_URL=https://obbenchmark1.blob.core.windows.net/
+export METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT=https://obbenchmark1.blob.core.windows.net/
 export METAFLOW_ARTIFACT_LOCALROOT=/mnt/metaflow-tmp
 export METAFLOW_CLIENT_CACHE_PATH=/mnt/metaflow_client
 export METAFLOW_DATASTORE_SYSROOT_LOCAL=/mnt/.metaflow
