@@ -139,17 +139,9 @@ jobs:
           sleep 10
         # TODO add catch all clean up of everything in METAFLOW_DATASTORE_SYSROOT_AZURE
 
-      - name: Setup METAFLOW_DATASTORE_SYSROOT_AZURE
-        env:
-          METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
-        run: |
-          export METAFLOW_DATASTORE_SYSROOT_AZURE=$METAFLOW_DATASTORE_SYSROOT_AZURE/ob-ci/azure_k8s_and_argo_tests/$(date +%s)-$(openssl rand -hex 5)
-          echo "Generated METAFLOW_DATASTORE_SYSROOT_AZURE = $METAFLOW_DATASTORE_SYSROOT_AZURE (saving to .metaflow_datastore_sysroot_azure)"
-          echo "This will be used by all subsequent steps"
-          echo "$METAFLOW_DATASTORE_SYSROOT_AZURE" > .metaflow_datastore_sysroot_azure
-
       - name: Run a Flow on Kubernetes
         env:
+          METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
           METAFLOW_AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.METAFLOW_AZURE_STORAGE_ACCOUNT_URL }}
           METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE: ${{ secrets.METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE }}
           METAFLOW_KUBERNETES_SECRETS: secret-for-ci-run-${{ github.run_id }}.${{ github.run_attempt }}-step-k8s
@@ -165,6 +157,7 @@ jobs:
 
       - name: Run a Flow on Argo
         env:
+          METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
           METAFLOW_AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.METAFLOW_AZURE_STORAGE_ACCOUNT_URL }}
           METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE: ${{ secrets.METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE }}
           METAFLOW_KUBERNETES_SECRETS: secret-for-ci-run-${{ github.run_id }}.${{ github.run_attempt }}-step-argo
