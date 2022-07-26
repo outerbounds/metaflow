@@ -249,34 +249,6 @@ class TestAzureStorage(unittest.TestCase):
             # assume never crazy high
             self.assertLessEqual(len(_ClientCache._cache), 100)
 
-    def test_bad_credentials(self):
-        # skip this test if multiprocessing... mocking is a massive PITA
-        if self.storage._use_processes:
-            return
-        # inject bad access key
-        with patch(
-            "metaflow.datastore.azure_storage.get_azure_storage_shared_access_signature"
-        ) as m:
-            m.return_value("garbage_shared_access_signature")
-            self.storage = DATASTORES["azure"](self.datastore_root)
-            with self.assertRaises(MetaflowAzureAuthenticationError):
-                self.storage.list_content(["a"])
-
-        # skip access key, but inject bad default token
-        with patch(
-            "metaflow.datastore.azure_storage.get_azure_storage_shared_access_signature"
-        ) as m:
-            m.return_value(None)
-            self.storage = DATASTORES["azure"](self.datastore_root)
-            self.storage._default_scope_token = AccessToken(
-                # bad token value
-                token="not a real token",
-                # but, not expired (give it a year)
-                expires_on=int(time.time() + 365 * 24 * 3600),
-            )
-            with self.assertRaises(MetaflowAzureAuthenticationError):
-                self.storage.list_content(["a"])
-
     def test_parse_azure_sysroot(self):
         cases = [
             {"sysroot": "container", "parse_result": ("container", None)},
