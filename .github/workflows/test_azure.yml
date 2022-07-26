@@ -37,7 +37,9 @@ jobs:
         env:
           METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
           METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT: ${{ secrets.METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT }}
-          METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE: ${{ secrets.METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           export METAFLOW_DATASTORE_SYSROOT_AZURE=$METAFLOW_DATASTORE_SYSROOT_AZURE/ob-ci/azure_unit_tests/$(date +%s)-$(openssl rand -hex 5)
           cd test/unit && PYTHONPATH=$(pwd)/../../ python3 test_azure_storage.py
@@ -67,7 +69,9 @@ jobs:
         env:
           METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
           METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT: ${{ secrets.METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT }}
-          METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE: ${{ secrets.METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           export METAFLOW_DATASTORE_SYSROOT_AZURE=$METAFLOW_DATASTORE_SYSROOT_AZURE/ob-ci/azure_core_tests/$(date +%s)-$(openssl rand -hex 5)
           cd test/extensions
@@ -120,13 +124,13 @@ jobs:
 
       - name: Prepare k8s access
         env:
-          AZURE_K8S_SERVICE_PRINCIPAL_APP_ID: ${{ secrets.AZURE_K8S_SERVICE_PRINCIPAL_APP_ID }}
-          AZURE_K8S_SERVICE_PRINCIPAL_PASSWORD: ${{ secrets.AZURE_K8S_SERVICE_PRINCIPAL_PASSWORD }}
-          AZURE_K8S_SERVICE_PRINCIPAL_TENANT_ID: ${{ secrets.AZURE_K8S_SERVICE_PRINCIPAL_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_K8S_CLUSTER_NAME: metaflow-kubernetes-ci
           AZURE_K8S_CLUSTER_RESOURCE_GROUP: rg-k8s-metaflow-ci
         run: |
-          az login -o none --service-principal --username "$AZURE_K8S_SERVICE_PRINCIPAL_APP_ID" --password "$AZURE_K8S_SERVICE_PRINCIPAL_PASSWORD" --tenant "$AZURE_K8S_SERVICE_PRINCIPAL_TENANT_ID"
+          az login -o none --service-principal --username "$AZURE_CLIENT_ID" --password "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
           az aks get-credentials --resource-group "$AZURE_K8S_CLUSTER_RESOURCE_GROUP" --name "$AZURE_K8S_CLUSTER_NAME"
 
       - name: Kick off port forward to Metaflow services in AKS
@@ -139,33 +143,33 @@ jobs:
         env:
           METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
           METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT: ${{ secrets.METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT }}
-          METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE: ${{ secrets.METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE }}
-          METAFLOW_KUBERNETES_SECRETS: secret-for-ci-run-${{ github.run_id }}.${{ github.run_attempt }}-step-k8s
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          METAFLOW_KUBERNETES_SECRETS: metaflow-azure-storage-credentials
           METAFLOW_SERVICE_URL: http://127.0.0.1:8080/
           METAFLOW_SERVICE_INTERNAL_URL: http://metadata-service.default:8080/
         run: |
           source $HOME/miniconda3/bin/activate
           export PYTHONPATH=$(pwd)
-          kubectl create secret generic "$METAFLOW_KUBERNETES_SECRETS" --from-literal=METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE="${METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE}"
           python3 metaflow-on-azure/sample_flows/conda_noop_flow.py --environment=conda --datastore=azure --metadata=service run --with=kubernetes
-          kubectl delete secret "$METAFLOW_KUBERNETES_SECRETS"
 
       - name: Run a Flow on Argo
         env:
           METAFLOW_DATASTORE_SYSROOT_AZURE: ${{ secrets.METAFLOW_DATASTORE_SYSROOT_AZURE }}
           METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT: ${{ secrets.METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT }}
-          METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE: ${{ secrets.METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE }}
-          METAFLOW_KUBERNETES_SECRETS: secret-for-ci-run-${{ github.run_id }}.${{ github.run_attempt }}-step-argo
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          METAFLOW_KUBERNETES_SECRETS: metaflow-azure-storage-credentials
           METAFLOW_SERVICE_URL: http://127.0.0.1:8080/
           METAFLOW_SERVICE_INTERNAL_URL: http://metadata-service.default:8080/
           METAFLOW_KUBERNETES_NAMESPACE: argo
         run: |
           source $HOME/miniconda3/bin/activate
           export PYTHONPATH=$(pwd)
-          kubectl create secret generic "$METAFLOW_KUBERNETES_SECRETS" -n "${METAFLOW_KUBERNETES_NAMESPACE}" --from-literal=METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE="${METAFLOW_AZURE_STORAGE_SHARED_ACCESS_SIGNATURE}"
           python3 metaflow-on-azure/sample_flows/conda_noop_flow.py --environment=conda --datastore=azure --metadata=service --with retry argo-workflows create
           python3 metaflow-on-azure/sample_flows/conda_noop_flow.py --environment=conda --datastore=azure --metadata=service argo-workflows trigger --run-id-file run_id_file
           argo wait --verbose -n argo "$(cat run_id_file | cut -f2- -d-)"
-          kubectl delete secret "$METAFLOW_KUBERNETES_SECRETS" -n "${METAFLOW_KUBERNETES_NAMESPACE}"
 
 
